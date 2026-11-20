@@ -1,0 +1,38 @@
+# Meteo ESP32-S3 WH1080 Project
+
+## Overview
+A meteorological station using ESP32-S3 to read data from a WH1080/DZWT1081 USB sensor and send it to an ASPX backend via JSON over HTTPS.
+
+## Technical Stack
+- **Hardware**: ESP32-S3 DevKitC-1.
+- **Framework**: Arduino (via PlatformIO).
+- **Storage**: LittleFS (for offline queue and logs).
+- **Communication**: WiFi (Station/AP), HTTPS (WiFiClientSecure), Telegram Bot API.
+- **Time**: NTP synchronization (GMT-3).
+
+## Critical Implementation Rules (Avoid regressions)
+- **Config Constants**: Always use `const char* const` in `config.h` to prevent "multiple definition" linker errors across multiple .cpp files.
+- **LittleFS Paths**: Always ensure paths start with `/` (e.g., `/system.log`). Use `String(file.name()).startsWith()` instead of `file.name().startsWith()` because `.name()` returns `const char*`.
+- **USB Host**: Currently uses a simulator in `wh1080_usb.cpp`. Real implementation requires `usb_host_transfer_handle_t`.
+- **WiFi Portal**: Must call `WifiPortal::handleClient()` in the main loop while the portal is active.
+- **GPIO 0 (BOOT)**: Must be initialized with `pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP)` to avoid "IO 0 is not set as GPIO" errors.
+
+## Backend Integration (`receptor.aspx`)
+- **URL**: `https://gamex99.bsite.net/receptor.aspx?estacion=[STATION_ID]`
+- **Auth**: Sends `X-ESP-Token` header.
+- **JSON Fields Required**:
+  - `temp`, `hum`, `pres`, `dir`, `vel`, `rafaga`, `lluvia_c` (Outdoor)
+  - `temp_int`, `hum_int` (Indoor)
+  - `fecha_rpi` (ISO timestamp via NTP)
+  - `chip_id`, `rssi`, `uptime`, `firmware`
+- **Success Criteria**: Server must respond with `"LOGRADO:[count]"`.
+
+## Key Features
+- **Offline Queue**: Stores JSONs in `/q_[millis].json`. Processes in batches of 10.
+- **Telegram Bot**: Commands `/ota [id]` to trigger GitHub-based firmware update.
+- **Boot Button**: Holding for 5s forces the Config Portal.
+- **NTP**: Synchronizes time at boot for accurate `fecha_rpi`.
+
+## Partition Table (`partitions.csv`)
+- Custom layout to support OTA and large LittleFS for logs/queue.
+- `otadata` must be at offset `0xE000` to avoid overlap with `nvs`.
